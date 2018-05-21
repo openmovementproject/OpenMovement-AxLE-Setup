@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.Devices.Bluetooth;
@@ -9,13 +8,18 @@ using Windows.Devices.Bluetooth.Advertisement;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 using Windows.Foundation;
 using Windows.Security.Cryptography;
-using Windows.Storage.Streams;
 
 namespace OpenMovement.AxLE.Setup
 {
     class Program
     {
-        static async void Main(string[] args)
+        static void Main(string[] args)
+        {
+            Program program = new Program();
+            program.Run(args);
+        }
+
+        async void Run(string[] args)
         {
             var devices = new Queue<BluetoothLEDevice>();
 
@@ -81,7 +85,7 @@ namespace OpenMovement.AxLE.Setup
             }
         }
 
-        private static async Task<bool> Authenticate(GattCharacteristic rxCharac, GattCharacteristic txCharac, string pass)
+        private async Task<bool> Authenticate(GattCharacteristic rxCharac, GattCharacteristic txCharac, string pass)
         {
             var tcs = new TaskCompletionSource<bool>();
             var buffer = CryptographicBuffer.ConvertStringToBinary($"U{pass}", BinaryStringEncoding.Utf8);
@@ -100,37 +104,28 @@ namespace OpenMovement.AxLE.Setup
 
             await txCharac.WriteValueAsync(buffer);
 
-            return tcs.Task;
+            return await tcs.Task;
         }
 
-        private static async Task<bool> Reset(GattCharacteristic rxCharac, GattCharacteristic txCharac, string pass)
+        private async Task Reset(GattCharacteristic rxCharac, GattCharacteristic txCharac, string pass)
         {
-            var tcs = new TaskCompletionSource<bool>();
             var buffer = CryptographicBuffer.ConvertStringToBinary($"E{pass}", BinaryStringEncoding.Utf8);
 
             await txCharac.WriteValueAsync(buffer);
-
-            return tcs.Task;
         }
 
-        private static async Task Flash(GattCharacteristic txCharac)
+        private async Task Flash(GattCharacteristic txCharac)
         {
-            var tcs = new TaskCompletionSource<int>();
             var buffer = CryptographicBuffer.ConvertStringToBinary($"3", BinaryStringEncoding.Utf8);
 
             await txCharac.WriteValueAsync(buffer);
-
-            return tcs.Task;
         }
 
-        private static async Task Buzz(GattCharacteristic txCharac)
+        private async Task Buzz(GattCharacteristic txCharac)
         {
-            var tcs = new TaskCompletionSource<int>();
             var buffer = CryptographicBuffer.ConvertStringToBinary($"M", BinaryStringEncoding.Utf8);
 
             await txCharac.WriteValueAsync(buffer);
-
-            return tcs.Task;
         }
     }
 }
