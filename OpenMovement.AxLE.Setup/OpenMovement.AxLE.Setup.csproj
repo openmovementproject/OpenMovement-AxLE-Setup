@@ -51,11 +51,30 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AxLEUuid.cs" />
+    <Compile Include="LabelPrint.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <None Include="LabelPrint\Label-AxLE-3.5mm.lbx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="LabelPrint\Label-AxLE-6mm.lbx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="LabelPrint\Label-AxLE-9mm.lbx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="LabelPrint\PrintLabel.cmd">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="LabelPrint\depends.txt" />
+    <Content Include="LabelPrint\PrintLabel.vbs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

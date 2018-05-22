@@ -1,0 +1,4 @@
+"PT2430PC Driver" (for your Windows version and 32/64-bit)
+"b-PAC Client (32-bit)" (bcciw31001.msi)
+
+Serial format: L3G523912
