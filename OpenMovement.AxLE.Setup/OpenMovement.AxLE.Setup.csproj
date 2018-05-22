@@ -51,7 +51,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AxLEUuid.cs" />
-    <Compile Include="LabelPrint.cs" />
+    <Compile Include="RedirectedProcess.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

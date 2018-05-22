@@ -13,7 +13,8 @@ namespace OpenMovement.AxLE.Setup
 {
     class Program
     {
-        private LabelPrint labelPrinter = new LabelPrint(@"LabelPrint\PrintLabel.cmd", "Label-AxLE-9mm.lbx objName $address objBarcode $address");
+        const string LABEL_EXECUTABLE = @"LabelPrint\PrintLabel.cmd";
+        const string LABEL_ARGS = @"Label-AxLE-9mm.lbx objName $address objBarcode $address";
 
         private DateTime started;
         volatile Queue<BluetoothLEDevice> devices = new Queue<BluetoothLEDevice>();
@@ -171,7 +172,7 @@ namespace OpenMovement.AxLE.Setup
                             // Print MAC address
                             var address = BtAddress(device.BluetoothAddress);
                             Console.WriteLine("MAC: " + address);
-                            labelPrinter.LabelPrintSync(address);
+                            RedirectedProcess.Execute(LABEL_EXECUTABLE, LABEL_ARGS.Replace("$address", address));
                             break;
                         }
                     }
