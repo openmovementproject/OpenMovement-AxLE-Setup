@@ -24,28 +24,6 @@ namespace OpenMovement.AxLE.Setup
         volatile int uniqueFound = 0;
         volatile int axleDevicesFound = 0;
 
-        public static ulong BtAddress(string address)
-        {
-            address = address.Replace(":", "").Replace("-", "").ToUpper();    // remove address separators
-            if (address.Length != 12)
-            {
-                throw new FormatException("MAC address must be 12 nibbles.");
-            }
-            return ulong.Parse(address, System.Globalization.NumberStyles.HexNumber);
-        }
-
-        public static string BtAddress(ulong address)
-        {
-            return string.Format("{0:X2}:{1:X2}:{2:X2}:{3:X2}:{4:X2}:{5:X2}",
-                    (address >> (5 * 8)) & 0xff,
-                    (address >> (4 * 8)) & 0xff,
-                    (address >> (3 * 8)) & 0xff,
-                    (address >> (2 * 8)) & 0xff,
-                    (address >> (1 * 8)) & 0xff,
-                    (address >> (0 * 8)) & 0xff
-                );
-        }
-
         private async void ProcessDevice(BluetoothLEAdvertisementReceivedEventArgs btAdv)
         {
             BluetoothLEDevice device;
@@ -54,20 +32,20 @@ namespace OpenMovement.AxLE.Setup
                 device = await BluetoothLEDevice.FromBluetoothAddressAsync(btAdv.BluetoothAddress);                
                 if (device.Name != "axLE-Band")
                 {
-                    Console.WriteLine("WARNING: Device has wrong name: " + device.Name + " <" + BtAddress(btAdv.BluetoothAddress) + ">");
+                    Console.WriteLine("WARNING: Device has wrong name: " + device.Name + " <" + btAdv.BluetoothAddress.FormatBtAddress() + ">");
                 }
                 this.axleDevicesFound++;
                 if (whitelist.Count > 0 && !whitelist.Contains(btAdv.BluetoothAddress))
                 {
-                    Console.WriteLine("SCAN: Ignoring device not in whitelist: " + device.Name + " " + " <" + BtAddress(btAdv.BluetoothAddress) + ">");
+                    Console.WriteLine("SCAN: Ignoring device not in whitelist: " + device.Name + " " + " <" + btAdv.BluetoothAddress.FormatBtAddress() + ">");
                     return;
                 }
-                //Console.WriteLine("SCAN: Found device: " + device.Name + " " + " <" + BtAddress(btAdv.BluetoothAddress) + ">");
+                //Console.WriteLine("SCAN: Found device: " + device.Name + " " + " <" + BtAddress(btAdv.BluetoothAddress.FormatBtAddress()) + ">");
                 devices.Enqueue(device);
             }
             catch (Exception e)
             {
-                Console.WriteLine("SCAN: Exception while retrieving device " + btAdv + ": " + e.Message);
+                Console.WriteLine("SCAN: Exception while retrieving device " + btAdv.BluetoothAddress.FormatBtAddress() + ": " + e.Message);
             }
         }
 
@@ -117,9 +95,9 @@ namespace OpenMovement.AxLE.Setup
 
                 var device = devices.Dequeue();
                 Console.WriteLine("-------------------------");
-                Console.WriteLine($"AxLE FOUND: {BtAddress(device.BluetoothAddress)}");
+                Console.WriteLine($"AxLE FOUND: {device.BluetoothAddress.FormatBtAddress()}");
                 var serial = device.BluetoothAddress.ToString("X");
-                Console.WriteLine($"Serial: {serial} <{BtAddress(device.BluetoothAddress)}>");
+                Console.WriteLine($"Serial: {serial} <{device.BluetoothAddress.FormatBtAddress()}>");
 
                 var pass = serial.Substring(serial.Length - 6);
                 Console.WriteLine("Attempting Auth...");
@@ -170,7 +148,7 @@ namespace OpenMovement.AxLE.Setup
                         {
                             Console.WriteLine("Printing...");
                             // Print MAC address
-                            var address = BtAddress(device.BluetoothAddress);
+                            var address = device.BluetoothAddress.FormatBtAddress();
                             Console.WriteLine("MAC: " + address);
                             RedirectedProcess.Execute(LABEL_EXECUTABLE, LABEL_ARGS.Replace("$address", address));
                             break;
@@ -196,7 +174,7 @@ namespace OpenMovement.AxLE.Setup
             bleWatcher.Received += BleWatcher_Received;
 
 #if DEBUG
-            whitelist.Add(BtAddress("D9:B1:A1:83:DB:6C"));
+            whitelist.Add("D9:B1:A1:83:DB:6C".ParseBtAddress());
 #endif
 
             // Start the scanner
