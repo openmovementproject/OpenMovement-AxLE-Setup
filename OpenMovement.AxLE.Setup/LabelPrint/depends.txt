@@ -1,4 +1,4 @@
-"PT2430PC Driver" (for your Windows version and 32/64-bit)
-"b-PAC Client (32-bit)" (bcciw31001.msi)
+"P700 Driver" (other was "PT2430PC Driver") (for your Windows version and 32/64-bit)
+"b-PAC Client (32-bit)" (bsdkw32010eu.exe) (earlier version was bcciw31001.msi)
 
 Serial format: L3G523912
