@@ -52,12 +52,16 @@
   <ItemGroup>
     <Compile Include="AxLEUuid.cs" />
     <Compile Include="BtAddressExtensions.cs" />
+    <Compile Include="BtUartDevice.cs" />
     <Compile Include="RedirectedProcess.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <None Include="LabelPrint\Label-AxLE-24mm.lbx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="LabelPrint\Label-AxLE-3.5mm.lbx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

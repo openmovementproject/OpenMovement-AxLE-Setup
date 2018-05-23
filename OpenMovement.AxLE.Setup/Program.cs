@@ -13,41 +13,17 @@ namespace OpenMovement.AxLE.Setup
 {
     class Program
     {
-        const string LABEL_EXECUTABLE = @"LabelPrint\PrintLabel.cmd";
-        const string LABEL_ARGS = @"Label-AxLE-9mm.lbx objName $address objBarcode $address";
+        const string LabelTapeWidth = "24"; // "3.5", "6", "9", "24"
+        const string LabelExecutable = @"LabelPrint\PrintLabel.cmd";
+        const string LabelArgs = @"Label-AxLE-{tapeWidth}mm.lbx objName {address} objBarcode {addressPlain}";
 
+        volatile Queue<ulong> devices = new Queue<ulong>();
         private DateTime started;
-        volatile Queue<BluetoothLEDevice> devices = new Queue<BluetoothLEDevice>();
         private ISet<ulong> whitelist = new HashSet<ulong>();
-        volatile ISet<ulong> reported = new HashSet<ulong>();
-        volatile int totalFound = 0;
-        volatile int uniqueFound = 0;
-        volatile int axleDevicesFound = 0;
-
-        private async void ProcessDevice(BluetoothLEAdvertisementReceivedEventArgs btAdv)
-        {
-            BluetoothLEDevice device;
-            try
-            {
-                device = await BluetoothLEDevice.FromBluetoothAddressAsync(btAdv.BluetoothAddress);                
-                if (device.Name != "axLE-Band")
-                {
-                    Console.WriteLine("WARNING: Device has wrong name: " + device.Name + " <" + btAdv.BluetoothAddress.FormatBtAddress() + ">");
-                }
-                this.axleDevicesFound++;
-                if (whitelist.Count > 0 && !whitelist.Contains(btAdv.BluetoothAddress))
-                {
-                    Console.WriteLine("SCAN: Ignoring device not in whitelist: " + device.Name + " " + " <" + btAdv.BluetoothAddress.FormatBtAddress() + ">");
-                    return;
-                }
-                //Console.WriteLine("SCAN: Found device: " + device.Name + " " + " <" + BtAddress(btAdv.BluetoothAddress.FormatBtAddress()) + ">");
-                devices.Enqueue(device);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine("SCAN: Exception while retrieving device " + btAdv.BluetoothAddress.FormatBtAddress() + ": " + e.Message);
-            }
-        }
+        private ISet<ulong> reported = new HashSet<ulong>();
+        private int totalFound = 0;
+        private int uniqueFound = 0;
+        private int axleDevicesFound = 0;
 
         private void BleWatcher_Received(BluetoothLEAdvertisementWatcher sender, BluetoothLEAdvertisementReceivedEventArgs btAdv)
         {
@@ -68,9 +44,16 @@ namespace OpenMovement.AxLE.Setup
                 return;
             }
 
-            //Console.WriteLine("SCAN: Fetching device: " + " <" + BtAddress(btAdv.BluetoothAddress) + ">");
-            ProcessDevice(btAdv);
+            this.axleDevicesFound++;
+            if (whitelist.Count > 0 && !whitelist.Contains(btAdv.BluetoothAddress))
+            {
+                Console.WriteLine("SCAN: Ignoring device not in whitelist: " + btAdv.Advertisement.LocalName + " " + " <" + btAdv.BluetoothAddress.FormatBtAddress() + ">");
+                return;
+            }
+
+            devices.Enqueue(btAdv.BluetoothAddress);
         }
+
 
         async Task<bool> MainTasks()
         {
@@ -93,9 +76,26 @@ namespace OpenMovement.AxLE.Setup
                     return false;
                 }
 
-                var device = devices.Dequeue();
+                var address = devices.Dequeue();
                 Console.WriteLine("-------------------------");
-                Console.WriteLine($"AxLE FOUND: {device.BluetoothAddress.FormatBtAddress()}");
+                Console.WriteLine($"AxLE FOUND: {address.FormatBtAddress()}");
+                Console.WriteLine("Connecting...");
+
+                BluetoothLEDevice device;
+                try
+                {
+                    device = await BluetoothLEDevice.FromBluetoothAddressAsync(address);
+                    //if (device.Name != "axLE-Band")
+                    //Console.WriteLine("SCAN: Found device: " + device.Name + " " + " <" + BtAddress(address.FormatBtAddress()) + ">");
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("ERROR: Problem connecting to device" + address.FormatBtAddress() + ": " + e.Message);
+                    devices.Enqueue(address);   // retry later
+                    return false;
+                }
+
+
                 var serial = device.BluetoothAddress.ToString("X");
                 Console.WriteLine($"Serial: {serial} <{device.BluetoothAddress.FormatBtAddress()}>");
 
@@ -148,9 +148,13 @@ namespace OpenMovement.AxLE.Setup
                         {
                             Console.WriteLine("Printing...");
                             // Print MAC address
-                            var address = device.BluetoothAddress.FormatBtAddress();
+                            var macAddress = device.BluetoothAddress.FormatBtAddress();
+                            string labelArgs = "" + LabelArgs;
+                            labelArgs = labelArgs.Replace("{address}", macAddress);
+                            labelArgs = labelArgs.Replace("{addressPlain}", macAddress.Replace(":", ""));
+                            labelArgs = labelArgs.Replace("{tapeWidth}", LabelTapeWidth);
                             Console.WriteLine("MAC: " + address);
-                            RedirectedProcess.Execute(LABEL_EXECUTABLE, LABEL_ARGS.Replace("$address", address));
+                            RedirectedProcess.Execute(LabelExecutable, labelArgs);
                             break;
                         }
                     }
@@ -174,7 +178,9 @@ namespace OpenMovement.AxLE.Setup
             bleWatcher.Received += BleWatcher_Received;
 
 #if DEBUG
-            whitelist.Add("D9:B1:A1:83:DB:6C".ParseBtAddress());
+            // If whitelist is empty, all devices are scanned
+//            whitelist.Add("D9:B1:A1:83:DB:6C".ParseBtAddress());    // desk
+//            whitelist.Add("FD:5A:F1:5D:4E:90".ParseBtAddress());    // GW
 #endif
 
             // Start the scanner
