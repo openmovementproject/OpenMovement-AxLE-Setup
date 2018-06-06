@@ -1,5 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="..\OpenMovement.AxLE.Comms\OpenMovement.AxLE.Comms.Bluetooth.Windows\OpenMovement.AxLE.Comms.Bluetooth.Windows.projitems" Label="Shared" Condition="Exists('..\OpenMovement.AxLE.Comms\OpenMovement.AxLE.Comms.Bluetooth.Windows\OpenMovement.AxLE.Comms.Bluetooth.Windows.projitems')" />
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -19,7 +20,7 @@
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
     <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <DefineConstants>DEBUG;TRACE;WIN_CONSOLE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
@@ -28,7 +29,7 @@
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
+    <DefineConstants>TRACE;WIN_CONSOLE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
@@ -50,9 +51,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="AxLEUuid.cs" />
     <Compile Include="BtAddressExtensions.cs" />
-    <Compile Include="BtUartDevice.cs" />
     <Compile Include="RedirectedProcess.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -80,6 +79,16 @@
     <Content Include="LabelPrint\PrintLabel.vbs">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OpenMovement.AxLE.Comms\OpenMovement.AxLE.Service\OpenMovement.AxLE.Service.csproj">
+      <Project>{A868F8B1-9DD1-4863-9D63-F819B3C7F591}</Project>
+      <Name>OpenMovement.AxLE.Service</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\OpenMovement.AxLE.Comms\OpenMovement.AxLE.Comms\OpenMovement.AxLE.Comms.csproj">
+      <Project>{2EE55778-21BC-498E-9CF3-3F3D8908E8FF}</Project>
+      <Name>OpenMovement.AxLE.Comms</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

@@ -1,57 +1,46 @@
-﻿using System;
+﻿using OpenMovement.AxLE.Comms;
+using OpenMovement.AxLE.Comms.Bluetooth.Interfaces;
+using OpenMovement.AxLE.Comms.Bluetooth.Windows;
+using OpenMovement.AxLE.Comms.Interfaces;
+using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Windows.Devices.Bluetooth;
-using Windows.Devices.Bluetooth.Advertisement;
-using Windows.Devices.Bluetooth.GenericAttributeProfile;
-using Windows.Foundation;
-using Windows.Security.Cryptography;
 
 namespace OpenMovement.AxLE.Setup
 {
     class Program
     {
-        const string LabelTapeWidth = "24"; // "3.5", "6", "9", "24"
+        const string LabelTapeWidth = "9"; // "3.5", "6", "9", "24"
         const string LabelExecutable = @"LabelPrint\PrintLabel.cmd";
         const string LabelArgs = @"Label-AxLE-{tapeWidth}mm.lbx objName {address} objBarcode {addressPlain}";
 
-        volatile Queue<ulong> devices = new Queue<ulong>();
+        IBluetoothManager _bluetoothManager;
+        IAxLEManager _axLEManager;
+
+        volatile Queue<string> devices = new Queue<string>();
         private DateTime started;
-        private ISet<ulong> whitelist = new HashSet<ulong>();
-        private ISet<ulong> reported = new HashSet<ulong>();
+        private ISet<string> whitelist = new HashSet<string>();
+        private ISet<string> reported = new HashSet<string>();
         private int totalFound = 0;
         private int uniqueFound = 0;
         private int axleDevicesFound = 0;
 
-        private void BleWatcher_Received(BluetoothLEAdvertisementWatcher sender, BluetoothLEAdvertisementReceivedEventArgs btAdv)
+        private void AxLEManager_DeviceFound(object sender, string serial)
         {
             this.totalFound++;
-            if (reported.Contains(btAdv.BluetoothAddress)) { return; }  // ignore duplicate
-            reported.Add(btAdv.BluetoothAddress);   // Add to ignore in future
+            if (reported.Contains(serial)) { return; }  // ignore duplicate
+            reported.Add(serial);   // Add to ignore in future
             this.uniqueFound++;
 
-            if (btAdv.AdvertisementType != BluetoothLEAdvertisementType.ConnectableUndirected)
-            {
-                //Console.WriteLine("SCAN: Ignoring non-connectable/directed: " + " <" + BtAddress(btAdv.BluetoothAddress) + "> (" + btAdv.AdvertisementType + ")");
-                return;
-            }
-
-            if (btAdv.Advertisement.LocalName != "axLE-Band")
-            {
-                //Console.WriteLine("SCAN: Ignoring device : " + btAdv.Advertisement.LocalName + " <" + BtAddress(btAdv.BluetoothAddress) + "> (" + btAdv.AdvertisementType + ")");
-                return;
-            }
-
             this.axleDevicesFound++;
-            if (whitelist.Count > 0 && !whitelist.Contains(btAdv.BluetoothAddress))
+            if (whitelist.Count > 0 && !whitelist.Contains(serial))
             {
-                Console.WriteLine("SCAN: Ignoring device not in whitelist: " + btAdv.Advertisement.LocalName + " " + " <" + btAdv.BluetoothAddress.FormatBtAddress() + ">");
+                Console.WriteLine("SCAN: Ignoring device not in whitelist: axLE-Band " + " <" + serial.FormatMacAddress() + ">");
                 return;
             }
 
-            devices.Enqueue(btAdv.BluetoothAddress);
+            devices.Enqueue(serial);
         }
 
 
@@ -78,48 +67,36 @@ namespace OpenMovement.AxLE.Setup
 
                 var address = devices.Dequeue();
                 Console.WriteLine("-------------------------");
-                Console.WriteLine($"AxLE FOUND: {address.FormatBtAddress()}");
+                Console.WriteLine($"AxLE FOUND: {address.FormatMacAddress()}");
                 Console.WriteLine("Connecting...");
 
-                BluetoothLEDevice device;
+                Comms.AxLE device;
                 try
                 {
-                    device = await BluetoothLEDevice.FromBluetoothAddressAsync(address);
-                    //if (device.Name != "axLE-Band")
-                    //Console.WriteLine("SCAN: Found device: " + device.Name + " " + " <" + BtAddress(address.FormatBtAddress()) + ">");
+                    device = await _axLEManager.ConnectDevice(address);
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("ERROR: Problem connecting to device" + address.FormatBtAddress() + ": " + e.Message);
+                    Console.WriteLine("ERROR: Problem connecting to device" + address.FormatMacAddress() + ": " + e.Message);
                     devices.Enqueue(address);   // retry later
                     return false;
                 }
 
+                Console.WriteLine($"Serial: {address} <{address.FormatMacAddress()}>");
 
-                var serial = device.BluetoothAddress.ToString("X");
-                Console.WriteLine($"Serial: {serial} <{device.BluetoothAddress.FormatBtAddress()}>");
-
-                var pass = serial.Substring(serial.Length - 6);
+                var pass = address.Substring(address.Length - 6);
                 Console.WriteLine("Attempting Auth...");
 
-                var gatt = await device.GetGattServicesAsync();
-                var characs = await gatt.Services.Single(s => s.Uuid == AxLEUuid.UartServiceUuid).GetCharacteristicsAsync();
-
-                var rxCharac = characs.Characteristics.Single(c => c.Uuid == AxLEUuid.UartRxCharacUuid);
-                var txCharac = characs.Characteristics.Single(c => c.Uuid == AxLEUuid.UartTxCharacUuid);
-
-                await rxCharac.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
-
-                if (!await Authenticate(rxCharac, txCharac, pass))
+                if (!await device.Authenticate(pass))
                 {
                     Console.WriteLine("AUTH FAILED!! Device must be wiped to continue proceed? (Y/N)");
                     if (Console.ReadKey().Key == ConsoleKey.Y)
                     {
                         Console.WriteLine("Resetting device...");
-                        await Reset(rxCharac, txCharac, pass);
+                        await device.ResetPassword();
                         Thread.Sleep(500);
                         Console.WriteLine("Device reset. Authenticating...");
-                        await Authenticate(rxCharac, txCharac, pass);
+                        await device.Authenticate(pass);
                     }
                     else
                     {
@@ -133,8 +110,8 @@ namespace OpenMovement.AxLE.Setup
                 Console.WriteLine("*** Flashing and buzzing device, press Y if found, N to skip device ***");
                 for (; ; )
                 {
-                    await Flash(txCharac);
-                    await Buzz(txCharac);
+                    await device.LEDFlash();
+                    await device.VibrateDevice();
                     if (Console.KeyAvailable)
                     {
                         Console.Write("Found+print? (Y/N) >");
@@ -148,7 +125,7 @@ namespace OpenMovement.AxLE.Setup
                         {
                             Console.WriteLine("Printing...");
                             // Print MAC address
-                            var macAddress = device.BluetoothAddress.FormatBtAddress();
+                            var macAddress = address.FormatMacAddress();
                             string labelArgs = "" + LabelArgs;
                             labelArgs = labelArgs.Replace("{address}", macAddress);
                             labelArgs = labelArgs.Replace("{addressPlain}", macAddress.Replace(":", ""));
@@ -171,22 +148,18 @@ namespace OpenMovement.AxLE.Setup
         async Task Run()
         {
             this.started = DateTime.Now;
-            var bleWatcher = new BluetoothLEAdvertisementWatcher
-            {
-                ScanningMode = BluetoothLEScanningMode.Active
-            };
-            bleWatcher.Received += BleWatcher_Received;
 
-#if DEBUG
-            // If whitelist is empty, all devices are scanned
-//            whitelist.Add("D9:B1:A1:83:DB:6C".ParseBtAddress());    // desk
-//            whitelist.Add("FD:5A:F1:5D:4E:90".ParseBtAddress());    // GW
-#endif
+            _bluetoothManager = new BluetoothManager();
+            _axLEManager = new AxLEManager(_bluetoothManager)
+            {
+                RssiFilter = 40 // Scan only nearby AxLEs
+            };
+            _axLEManager.DeviceFound += AxLEManager_DeviceFound;
 
             // Start the scanner
             try
             {
-                bleWatcher.Start();
+                await _axLEManager.StartScan();
             }
             catch (Exception e)
             {
@@ -196,52 +169,12 @@ namespace OpenMovement.AxLE.Setup
 
             try
             {
-                while (!await MainTasks());
+                while (!await MainTasks()) {}
             }
             finally
             {
-                bleWatcher.Stop();
+                await _axLEManager.StopScan();
             }
-        }
-
-        private async Task<bool> Authenticate(GattCharacteristic rxCharac, GattCharacteristic txCharac, string pass)
-        {
-            var tcs = new TaskCompletionSource<bool>();
-            var buffer = CryptographicBuffer.ConvertStringToBinary($"U{pass}", BinaryStringEncoding.Utf8);
-
-            TypedEventHandler<GattCharacteristic, GattValueChangedEventArgs> callback = null;
-            callback = new TypedEventHandler<GattCharacteristic, GattValueChangedEventArgs>(delegate (GattCharacteristic c, GattValueChangedEventArgs args)
-            {
-                var response = CryptographicBuffer.ConvertBinaryToString(BinaryStringEncoding.Utf8, args.CharacteristicValue);
-
-                rxCharac.ValueChanged -= callback;
-
-                tcs.SetResult(response.Contains("Authenticated"));
-            });
-
-            rxCharac.ValueChanged += callback;
-
-            await txCharac.WriteValueAsync(buffer);
-
-            return await tcs.Task;
-        }
-
-        private async Task Reset(GattCharacteristic rxCharac, GattCharacteristic txCharac, string pass)
-        {
-            var buffer = CryptographicBuffer.ConvertStringToBinary($"E{pass}", BinaryStringEncoding.Utf8);
-            await txCharac.WriteValueAsync(buffer);
-        }
-
-        private async Task Flash(GattCharacteristic txCharac)
-        {
-            var buffer = CryptographicBuffer.ConvertStringToBinary($"3", BinaryStringEncoding.Utf8);
-            await txCharac.WriteValueAsync(buffer);
-        }
-
-        private async Task Buzz(GattCharacteristic txCharac)
-        {
-            var buffer = CryptographicBuffer.ConvertStringToBinary($"M", BinaryStringEncoding.Utf8);
-            await txCharac.WriteValueAsync(buffer);
         }
 
         static void Main(string[] args)

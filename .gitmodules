@@ -1,0 +1,3 @@
+[submodule "OpenMovement.AxLE.Comms"]
+	path = OpenMovement.AxLE.Comms
+	url = https://github.com/digitalinteraction/OpenMovement-AxLE-Comms
