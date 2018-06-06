@@ -5,13 +5,17 @@ VisualStudioVersion = 15.0.27428.2015
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenMovement.AxLE.Setup", "OpenMovement.AxLE.Setup\OpenMovement.AxLE.Setup.csproj", "{92C4F882-4C71-46B2-B59B-519675055C24}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenMovement.AxLE.Service", "OpenMovement.AxLE.Comms\OpenMovement.AxLE.Service\OpenMovement.AxLE.Service.csproj", "{A868F8B1-9DD1-4863-9D63-F819B3C7F591}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "OpenMovement.AxLE.Service", "OpenMovement.AxLE.Comms\OpenMovement.AxLE.Service\OpenMovement.AxLE.Service.csproj", "{A868F8B1-9DD1-4863-9D63-F819B3C7F591}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenMovement.AxLE.Comms", "OpenMovement.AxLE.Comms\OpenMovement.AxLE.Comms\OpenMovement.AxLE.Comms.csproj", "{2EE55778-21BC-498E-9CF3-3F3D8908E8FF}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "OpenMovement.AxLE.Comms", "OpenMovement.AxLE.Comms\OpenMovement.AxLE.Comms\OpenMovement.AxLE.Comms.csproj", "{2EE55778-21BC-498E-9CF3-3F3D8908E8FF}"
 EndProject
 Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "OpenMovement.AxLE.Comms.Bluetooth.Windows", "OpenMovement.AxLE.Comms\OpenMovement.AxLE.Comms.Bluetooth.Windows\OpenMovement.AxLE.Comms.Bluetooth.Windows.shproj", "{AC27C4E0-58DC-4F23-861A-DD25FE8634AB}"
 EndProject
 Global
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		OpenMovement.AxLE.Comms\OpenMovement.AxLE.Comms.Bluetooth.Windows\OpenMovement.AxLE.Comms.Bluetooth.Windows.projitems*{92c4f882-4c71-46b2-b59b-519675055c24}*SharedItemsImports = 4
+		OpenMovement.AxLE.Comms\OpenMovement.AxLE.Comms.Bluetooth.Windows\OpenMovement.AxLE.Comms.Bluetooth.Windows.projitems*{ac27c4e0-58dc-4f23-861a-dd25fe8634ab}*SharedItemsImports = 13
+	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
