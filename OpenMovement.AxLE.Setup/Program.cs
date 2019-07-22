@@ -4,6 +4,7 @@ using OpenMovement.AxLE.Comms.Bluetooth.Windows;
 using OpenMovement.AxLE.Comms.Interfaces;
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -11,6 +12,20 @@ namespace OpenMovement.AxLE.Setup
 {
     class Program
     {
+        //const string imageFile = @"..\..\_local\toucan.bmp";
+
+        string filterString = "";     // D/2CB$ T/BDB$
+        string imageFile = null;
+        int imageOffsetX = 0;
+        int imageOffsetY = 0;
+        bool imageNegate = false;
+        int imageRotate = -90;
+        bool imageFlipH = false;
+        bool imageFlipV = false;
+
+        bool autoImage = false;
+        bool autoExit = false;
+
         const string LabelTapeWidth = "9"; // "3.5", "6", "9", "24"
         const string LabelExecutable = @"LabelPrint\PrintLabel.cmd";
         const string LabelArgs = @"Label-AxLE-{tapeWidth}mm.lbx objName {address} objBarcode {addressPlain}";
@@ -66,77 +81,118 @@ namespace OpenMovement.AxLE.Setup
                 }
 
                 var address = devices.Dequeue();
+                
                 Console.WriteLine("-------------------------");
                 Console.WriteLine($"AxLE FOUND: {address.FormatMacAddress()}");
-                Console.WriteLine("Connecting...");
 
-                Comms.AxLE device;
-                try
+                Regex filter = null;
+                if (filterString != null && filterString.Length > 0) filter = new Regex(filterString, RegexOptions.IgnoreCase);
+
+                if (filter != null && filter.Match(address).Length <= 0)
                 {
-                    device = await _axLEManager.ConnectDevice(address);
+                    Console.WriteLine($"DEVICE: Ignoring as not matched filter: {address}");
+
                 }
-                catch (Exception e)
+                else
                 {
-                    Console.WriteLine("ERROR: Problem connecting to device" + address.FormatMacAddress() + ": " + e.Message);
-                    devices.Enqueue(address);   // retry later
-                    return false;
-                }
+                    Console.WriteLine($"DEVICE: Connecting... {address.FormatMacAddress()}");
 
-                Console.WriteLine($"Serial: {address} <{address.FormatMacAddress()}>");
-
-                var pass = address.Substring(address.Length - 6);
-                Console.WriteLine("Attempting Auth...");
-
-                if (!await device.Authenticate(pass))
-                {
-                    Console.WriteLine("AUTH FAILED!! Device must be wiped to continue proceed? (Y/N)");
-                    if (Console.ReadKey().Key == ConsoleKey.Y)
+                    IAxLE device;
+                    try
                     {
-                        Console.WriteLine("Resetting device...");
-                        await device.ResetPassword();
-                        Thread.Sleep(500);
-                        Console.WriteLine("Device reset. Authenticating...");
-                        await device.Authenticate(pass);
+                        device = await _axLEManager.ConnectDevice(address);
                     }
-                    else
+                    catch (Exception e)
                     {
-                        Console.WriteLine("Skipping device...");
+                        Console.WriteLine("ERROR: Problem connecting to device" + address.FormatMacAddress() + ": " + e.Message);
+                        devices.Enqueue(address);   // retry later
                         return false;
                     }
-                }
 
-                Console.WriteLine($"Auth Success!!");
+                    Console.WriteLine($"Serial: {address} <{address.FormatMacAddress()}>");
 
-                Console.WriteLine("*** Flashing and buzzing device, press Y if found, N to skip device ***");
-                for (; ; )
-                {
-                    await device.LEDFlash();
-                    await device.VibrateDevice();
-                    if (Console.KeyAvailable)
+                    var pass = address.Substring(address.Length - 6);
+                    Console.WriteLine("Attempting Auth...");
+
+                    if (!await device.Authenticate(pass))
                     {
-                        Console.Write("Found+print? (Y/N) >");
-                        var key = Console.ReadKey().Key;
-                        if (key == ConsoleKey.N)
+                        Console.WriteLine("AUTH FAILED!! Device must be wiped to continue proceed? (Y/N)");
+                        if (Console.ReadKey().Key == ConsoleKey.Y)
                         {
-                            Console.WriteLine("Skipping...");
-                            break;
+                            Console.WriteLine("Resetting device...");
+                            await device.ResetPassword();
+                            Thread.Sleep(500);
+                            Console.WriteLine("Device reset. Authenticating...");
+                            await device.Authenticate(pass);
                         }
-                        else if (key == ConsoleKey.Y)
+                        else
                         {
-                            Console.WriteLine("Printing...");
-                            // Print MAC address
-                            var macAddress = address.FormatMacAddress();
-                            string labelArgs = "" + LabelArgs;
-                            labelArgs = labelArgs.Replace("{address}", macAddress);
-                            labelArgs = labelArgs.Replace("{addressPlain}", macAddress.Replace(":", ""));
-                            labelArgs = labelArgs.Replace("{tapeWidth}", LabelTapeWidth);
-                            Console.WriteLine("MAC: " + address);
-                            RedirectedProcess.Execute(LabelExecutable, labelArgs);
-                            break;
+                            Console.WriteLine("Skipping device...");
+                            return false;
+                        }
+                    }
+
+                    Console.WriteLine($"Auth Success!!");
+
+                    Console.WriteLine("*** Flashing and buzzing device ***");
+                    for (; ; )
+                    {
+                        await device.LEDFlash();
+                        await device.VibrateDevice();
+                        if (Console.KeyAvailable || autoImage)
+                        {
+                            Console.Write("Found. P=Print, I=Image+Time, N=Skip (P/I/N) >");
+                            var key = autoImage ? ConsoleKey.I : Console.ReadKey().Key;
+                            if (key == ConsoleKey.N)
+                            {
+                                Console.WriteLine("Skipping...");
+                                break;
+                            }
+                            else if (key == ConsoleKey.P)
+                            {
+                                Console.WriteLine("Printing...");
+                                // Print MAC address
+                                var macAddress = address.FormatMacAddress();
+                                string labelArgs = "" + LabelArgs;
+                                labelArgs = labelArgs.Replace("{address}", macAddress);
+                                labelArgs = labelArgs.Replace("{addressPlain}", macAddress.Replace(":", ""));
+                                labelArgs = labelArgs.Replace("{tapeWidth}", LabelTapeWidth);
+                                Console.WriteLine("MAC: " + address);
+                                RedirectedProcess.Execute(LabelExecutable, labelArgs);
+                                break;
+                            }
+                            else if (key == ConsoleKey.I)
+                            {
+                                Console.WriteLine($"Setting time...");
+                                await device.WriteRealTime(DateTime.Now);
+
+                                if (imageFile != null)
+                                {
+                                    Console.WriteLine($"Image test... {imageFile}");
+                                    var bitmap = Bitmap.FromBitmapFile(imageFile);
+                                    Console.WriteLine("~~~ Original ~~~"); Console.Write(bitmap.DebugDumpString());
+                                    if (imageOffsetX != 0 || imageOffsetY != 0) { bitmap = bitmap.Crop(imageOffsetX, imageOffsetY, 32, 32); Console.Write(bitmap.DebugDumpString()); }
+                                    if (imageNegate) { Console.WriteLine("~~~ Negate ~~~"); bitmap = bitmap.Negate(); Console.Write(bitmap.DebugDumpString()); }
+                                    if (imageRotate != 0) { Console.WriteLine($"~~~ Rotate {imageRotate} ~~~"); bitmap = bitmap.Rotate(imageRotate); Console.Write(bitmap.DebugDumpString()); }
+                                    if (imageFlipH) { Console.WriteLine($"~~~ Flip-H ~~~"); bitmap = bitmap.FlipHorizontal(); Console.Write(bitmap.DebugDumpString()); }
+                                    if (imageFlipV) { Console.WriteLine($"~~~ Flip-V ~~~"); bitmap = bitmap.FlipVertical(); Console.Write(bitmap.DebugDumpString()); }
+                                    var data = bitmap.PackMonochrome();
+                                    for (var i = 0; i < data.Length; i++) { Console.Write($"0x{data[i]:X2}, "); if ((i & 15) == 15 || i + 1 >= data.Length) Console.WriteLine(); }
+                                    await device.WriteBitmap(data);
+                                    await device.DisplayIcon(0);
+                                    Console.WriteLine($"...done.");
+                                }
+
+                                if (autoExit)
+                                {
+                                    return true;
+                                }
+                                break;
+                            }
+
                         }
                     }
                 }
-
             }
             catch (Exception e)
             {
@@ -152,7 +208,7 @@ namespace OpenMovement.AxLE.Setup
             _bluetoothManager = new BluetoothManager();
             _axLEManager = new AxLEManager(_bluetoothManager)
             {
-                RssiFilter = 40 // Scan only nearby AxLEs
+                RssiFilter = 0 // 40 Scan only nearby AxLEs
             };
             _axLEManager.DeviceFound += AxLEManager_DeviceFound;
 
@@ -177,10 +233,51 @@ namespace OpenMovement.AxLE.Setup
             }
         }
 
+        public bool UseArgs(string[] args)
+        {
+            bool help = false;
+            for (int i = 0; i < args.Length; i++)
+            {
+                var arg = args[i];
+                if (arg == "/h" || arg == "/?" || arg == "-h" || arg == "-?" || arg == "-help" || arg == "--help") { help = true; }
+                else if (arg == "-device") { filterString = args[++i]; }
+                else if (arg == "-image") { imageFile = args[++i]; }
+                else if (arg == "-image-neg") { imageNegate = true; }
+                else if (arg == "-image-rot") { imageRotate = int.Parse(args[++i]); }
+                else if (arg == "-image-fliph") { imageFlipH = true; }
+                else if (arg == "-image-flipv") { imageFlipV = true; }
+                else if (arg == "-image-offx") { imageOffsetX = int.Parse(args[++i]); }
+                else if (arg == "-image-offy") { imageOffsetY = int.Parse(args[++i]); }
+                else if (arg == "-auto-image") { autoImage = true; }
+                else if (arg == "-auto-exit") { autoExit = true; }
+                else
+                {
+                    Console.Error.WriteLine("ERROR: Unknown parameter: " + arg);
+                    return false;
+                }
+            }
+
+            if (help)
+            {
+                Console.WriteLine("Usage: OpenMovement.AxLE.Setup [-device <device_pattern>] [-auto] [-image <filename.bmp>] [-image-neg] [-image-rot <degrees=-90>] [-image-flip{h|v}] [-image-off{x|y} <offset>]\n");
+                Console.WriteLine("\n");
+                Console.WriteLine("Where: 'device_pattern' is a regular expression to match against the device address (caps, no colons), e.g. \"2CB$\" will match any address: ??:??:??:??:?2:CB\n");
+                Console.WriteLine("       '-auto-image' automatically sends the image (if provided) and sets the time on any matching device\n");
+                Console.WriteLine("       '-auto-exit' automatically stops after one device\n");
+                Console.WriteLine("\n");
+                return false;
+            }
+
+            return true;
+        }
+
         static void Main(string[] args)
         {
             Program program = new Program();
-            Task.Run(program.Run).Wait();
+            if (program.UseArgs(args))
+            {
+                Task.Run(program.Run).Wait();
+            }
 #if DEBUG
             Console.WriteLine("END: Press any key to continue...");
             Console.ReadKey();
