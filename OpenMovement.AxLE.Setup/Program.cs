@@ -13,15 +13,21 @@ namespace OpenMovement.AxLE.Setup
     class Program
     {
         //const string imageFile = @"..\..\_local\toucan.bmp";
+        const int IMAGE_SIZE = 32;
 
         string filterString = "";     // D/2CB$ T/BDB$
         string imageFile = null;
+        string imageBackground = null;
         int imageOffsetX = 0;
         int imageOffsetY = 0;
         bool imageNegate = false;
         int imageRotate = -90;
         bool imageFlipH = false;
         bool imageFlipV = false;
+        int imageStart = 64;
+        int imageHeight = 0;
+
+        bool imageTest = false;
 
         bool autoImage = false;
         bool autoExit = false;
@@ -58,6 +64,39 @@ namespace OpenMovement.AxLE.Setup
             devices.Enqueue(serial);
         }
 
+        Bitmap GetBitmap()
+        {
+            Console.WriteLine($"Loading Image... {imageFile}");
+            var bitmap = Bitmap.FromBitmapFile(imageFile);
+            Console.WriteLine("~~~ Original ~~~"); Console.Write(bitmap.DebugDumpString());
+            if (imageOffsetX != 0 || imageOffsetY != 0) { Console.WriteLine("~~~ Crop ~~~"); bitmap = bitmap.Crop(imageOffsetX, imageOffsetY, IMAGE_SIZE, IMAGE_SIZE); Console.Write(bitmap.DebugDumpString()); }
+            if (imageFlipH) { Console.WriteLine($"~~~ Flip-H ~~~"); bitmap = bitmap.FlipHorizontal(); Console.Write(bitmap.DebugDumpString()); }
+            if (imageFlipV) { Console.WriteLine($"~~~ Flip-V ~~~"); bitmap = bitmap.FlipVertical(); Console.Write(bitmap.DebugDumpString()); }
+
+            if (imageBackground != null)
+            {
+                Bitmap bitmapBackground = Bitmap.FromBitmapFile(imageBackground);
+                Console.WriteLine("~~~ Background ~~~"); Console.Write(bitmapBackground.DebugDumpString());
+                if (imageFlipH) { bitmapBackground = bitmapBackground.FlipHorizontal(); }
+                if (imageFlipV) { bitmapBackground = bitmapBackground.FlipVertical(); }
+
+                Console.WriteLine("~~~ Height Over-Crop with background ~~~");
+                bitmap = bitmap.Crop(0, 0, (int)bitmapBackground.Width, (int)bitmapBackground.Height);
+                bitmap = bitmap.WithBackground(bitmapBackground);
+                Console.Write(bitmap.DebugDumpString());
+            }
+
+            if (imageNegate) { Console.WriteLine("~~~ Negate ~~~"); bitmap = bitmap.Negate(); Console.Write(bitmap.DebugDumpString()); }
+            if (imageRotate != 0) { Console.WriteLine($"~~~ Rotate {imageRotate} ~~~"); bitmap = bitmap.Rotate(imageRotate); Console.Write(bitmap.DebugDumpString()); }
+            return bitmap;
+        }
+
+        byte[] GetBitmapData(Bitmap bitmap)
+        {
+            var data = bitmap.PackMonochrome();
+            for (var i = 0; i < data.Length; i++) { Console.Write($"0x{data[i]:X2}, "); if ((i & 15) == 15 || i + 1 >= data.Length) Console.WriteLine(); }
+            return data;
+        }
 
         async Task<bool> MainTasks()
         {
@@ -168,18 +207,10 @@ namespace OpenMovement.AxLE.Setup
 
                                 if (imageFile != null)
                                 {
-                                    Console.WriteLine($"Image test... {imageFile}");
-                                    var bitmap = Bitmap.FromBitmapFile(imageFile);
-                                    Console.WriteLine("~~~ Original ~~~"); Console.Write(bitmap.DebugDumpString());
-                                    if (imageOffsetX != 0 || imageOffsetY != 0) { bitmap = bitmap.Crop(imageOffsetX, imageOffsetY, 32, 32); Console.Write(bitmap.DebugDumpString()); }
-                                    if (imageNegate) { Console.WriteLine("~~~ Negate ~~~"); bitmap = bitmap.Negate(); Console.Write(bitmap.DebugDumpString()); }
-                                    if (imageRotate != 0) { Console.WriteLine($"~~~ Rotate {imageRotate} ~~~"); bitmap = bitmap.Rotate(imageRotate); Console.Write(bitmap.DebugDumpString()); }
-                                    if (imageFlipH) { Console.WriteLine($"~~~ Flip-H ~~~"); bitmap = bitmap.FlipHorizontal(); Console.Write(bitmap.DebugDumpString()); }
-                                    if (imageFlipV) { Console.WriteLine($"~~~ Flip-V ~~~"); bitmap = bitmap.FlipVertical(); Console.Write(bitmap.DebugDumpString()); }
-                                    var data = bitmap.PackMonochrome();
-                                    for (var i = 0; i < data.Length; i++) { Console.Write($"0x{data[i]:X2}, "); if ((i & 15) == 15 || i + 1 >= data.Length) Console.WriteLine(); }
-                                    await device.WriteBitmap(data);
-                                    await device.DisplayIcon(0);
+                                    Bitmap bitmap = GetBitmap();
+                                    var data = GetBitmapData(bitmap);
+                                    await device.WriteBitmap(data, 0);
+                                    await device.DisplayIcon(0, imageStart, imageHeight > 0 ? imageHeight : (int)bitmap.Width);    // Image width is height on screen
                                     Console.WriteLine($"...done.");
                                 }
 
@@ -204,6 +235,15 @@ namespace OpenMovement.AxLE.Setup
         async Task Run()
         {
             this.started = DateTime.Now;
+
+            if (imageTest)
+            {
+                Bitmap bitmap = GetBitmap();
+                GetBitmapData(bitmap);
+                Console.WriteLine("DEBUG: Stopped after image test - press ENTER to exit...");
+                Console.In.Read();
+                return;
+            }
 
             _bluetoothManager = new BluetoothManager();
             _axLEManager = new AxLEManager(_bluetoothManager)
@@ -242,12 +282,16 @@ namespace OpenMovement.AxLE.Setup
                 if (arg == "/h" || arg == "/?" || arg == "-h" || arg == "-?" || arg == "-help" || arg == "--help") { help = true; }
                 else if (arg == "-device") { filterString = args[++i]; }
                 else if (arg == "-image") { imageFile = args[++i]; }
+                else if (arg == "-image-background") { imageBackground = args[++i]; }
                 else if (arg == "-image-neg") { imageNegate = true; }
                 else if (arg == "-image-rot") { imageRotate = int.Parse(args[++i]); }
                 else if (arg == "-image-fliph") { imageFlipH = true; }
                 else if (arg == "-image-flipv") { imageFlipV = true; }
                 else if (arg == "-image-offx") { imageOffsetX = int.Parse(args[++i]); }
                 else if (arg == "-image-offy") { imageOffsetY = int.Parse(args[++i]); }
+                else if (arg == "-image-height") { imageHeight = int.Parse(args[++i]); }
+                else if (arg == "-image-start") { imageStart = int.Parse(args[++i]); }
+                else if (arg == "-image-test") { imageTest = true; }
                 else if (arg == "-auto-image") { autoImage = true; }
                 else if (arg == "-auto-exit") { autoExit = true; }
                 else
@@ -259,7 +303,7 @@ namespace OpenMovement.AxLE.Setup
 
             if (help)
             {
-                Console.WriteLine("Usage: OpenMovement.AxLE.Setup [-device <device_pattern>] [-auto] [-image <filename.bmp>] [-image-neg] [-image-rot <degrees=-90>] [-image-flip{h|v}] [-image-off{x|y} <offset>]\n");
+                Console.WriteLine("Usage: OpenMovement.AxLE.Setup [-device <device_pattern>] [-auto] [-image <filename.bmp>] [-image-background <background.bmp>] [-image-neg] [-image-rot <degrees=-90>] [-image-flip{h|v}] [-image-off{x|y} <offset>] [-image-height <rows=32>] [-image-start <row=64>]\n");
                 Console.WriteLine("\n");
                 Console.WriteLine("Where: 'device_pattern' is a regular expression to match against the device address (caps, no colons), e.g. \"2CB$\" will match any address: ??:??:??:??:?2:CB\n");
                 Console.WriteLine("       '-auto-image' automatically sends the image (if provided) and sets the time on any matching device\n");

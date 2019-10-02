@@ -22,16 +22,16 @@ namespace OpenMovement.AxLE.Setup
             this.A = a;
         }
 
-        // Create from a buffer and offset in BGRA8888 order
-        public static Pixel FromBgra(byte[] buffer, uint offset)
+        // Create from a buffer and offset in BGRX8888 order
+        public static Pixel FromBgrx(byte[] buffer, uint offset)
         {
-            return new Pixel(buffer[offset + 2], buffer[offset + 1], buffer[offset + 0], buffer[offset + 3]);
+            return new Pixel(buffer[offset + 2], buffer[offset + 1], buffer[offset + 0], 255);  // Ignore X
         }
 
         // Create from a buffer and offset in BGR888 order
         public static Pixel FromBgr(byte[] buffer, uint offset)
         {
-            return new Pixel(buffer[offset + 2], buffer[offset + 1], buffer[offset + 0], 0);
+            return new Pixel(buffer[offset + 2], buffer[offset + 1], buffer[offset + 0], 255);
         }
 
         // Simple 1-RGBA components
@@ -39,7 +39,7 @@ namespace OpenMovement.AxLE.Setup
         {
             get
             {
-                return new Pixel((byte)(255 - R), (byte)(255 - G), (byte)(255 - B), (byte)(255 - A));
+                return new Pixel((byte)(255 - R), (byte)(255 - G), (byte)(255 - B), A);
             }
         }
 
@@ -61,7 +61,15 @@ namespace OpenMovement.AxLE.Setup
             }
         }
 
-        public static readonly Pixel BLACK = new Pixel(0, 0, 0, 0);
+        public bool Transparent
+        {
+            get
+            {
+                return A <= 0;
+            }
+        }
+        public static readonly Pixel BLACK = new Pixel(0, 0, 0, 255);
+        public static readonly Pixel TRANSPARENT = new Pixel(0, 0, 0, 0);
     }
 
     public class Bitmap
@@ -75,17 +83,20 @@ namespace OpenMovement.AxLE.Setup
         private readonly uint dataOffset;           // Offset of top-left pixel (bitmaps typically bottom-up, so usually last row in bitmap)
         private readonly uint paletteOffset;        // Palette stored in BGRX format
 
-        // View modified by cropping, rotation and inversion
+        // View modified by cropping, rotation, inversion and composition
         private readonly int offsetX;               // X-axis offset
         private readonly int offsetY;               // Y-axis offset
+        private readonly int cropWidth;             // Crop width
+        private readonly int cropHeight;            // Crop height
         private readonly bool swapAxes;             // Axes swapped
         private readonly bool invertX;              // X-axis inverted
         private readonly bool invertY;              // Y-axis inverted
         private readonly bool negative;             // Negate image
+        private readonly Bitmap background;         // Background image
 
         // Full constructor
         public Bitmap(byte[] buffer, uint width, uint height, uint bitsPerPixel = 32, int stride = 0, uint dataOffset = 0, uint paletteOffset = 0, 
-            int offsetX = 0, int offsetY = 0, bool swapAxes = false, bool invertX = false, bool invertY = false, bool negative = false)
+            int offsetX = 0, int offsetY = 0, int cropWidth = -1, int cropHeight = -1, bool swapAxes = false, bool invertX = false, bool invertY = false, bool negative = false, Bitmap background = null)
         {
             this.buffer = buffer;
             this.width = width;
@@ -96,24 +107,27 @@ namespace OpenMovement.AxLE.Setup
             this.paletteOffset = paletteOffset;
             this.offsetX = offsetX;
             this.offsetY = offsetY;
+            this.cropWidth = cropWidth;
+            this.cropHeight = cropHeight;
             this.swapAxes = swapAxes;
             this.invertX = invertX;
             this.invertY = invertY;
             this.negative = negative;
+            this.background = background;
         }
 
         // Constructor for a modified view of a given bitmap
-        private Bitmap(Bitmap bitmap, bool swapAxes, bool invertX, bool invertY, bool negative)
+        private Bitmap(Bitmap bitmap, bool swapAxes, bool invertX, bool invertY, bool negative, Bitmap background)
             : this(bitmap.buffer, bitmap.width, bitmap.height, bitmap.bitsPerPixel, bitmap.stride, bitmap.dataOffset, bitmap.paletteOffset, 
-                  bitmap.offsetX, bitmap.offsetY, swapAxes, invertX, invertY, negative)
+                  bitmap.offsetX, bitmap.offsetY, bitmap.cropWidth, bitmap.cropHeight, swapAxes, invertX, invertY, negative, background)
         {
         }
 
         // The apparent width (after view changes)
-        public uint Width { get { return swapAxes ? height : width; } }
+        public uint Width { get { return swapAxes ? (cropHeight >= 0 ? (uint)cropHeight : height) : (cropWidth >= 0 ? (uint)cropWidth : width); } }
 
         // The apparent height (after view changes)
-        public uint Height { get { return swapAxes ? width : height; } }
+        public uint Height { get { return swapAxes ? (cropWidth >= 0 ? (uint)cropWidth : width) : (cropHeight >= 0 ? (uint)cropHeight : height); } }
 
         // Creates a new Bitmap from .BMP data, taking ownership of the given byte array.
         public static Bitmap FromBitmapData(byte[] buffer)
@@ -149,7 +163,7 @@ namespace OpenMovement.AxLE.Setup
             x += offsetX;
             y += offsetY;
             Pixel? pixel = null;
-            if (x >= 0 && y >= 0 && x - offsetX < this.width && y - offsetY < this.height)
+            if (x >= 0 && y >= 0 && x - offsetX < this.width && y - offsetY < this.height && (this.cropWidth < 0 || x - offsetX < this.cropWidth) && (this.cropHeight < 0 || y - offsetY < this.cropHeight))
             {
                 uint rowStart = (uint)(this.dataOffset + y * this.stride);
                 switch (this.bitsPerPixel)
@@ -157,41 +171,54 @@ namespace OpenMovement.AxLE.Setup
                     case 1:     // 1-bit: left-most as MSB, right-most as LSB. Palette value.
                         {
                             uint offset = (uint)(rowStart + (x / 8));
-                            byte data = this.buffer[offset];
-                            uint value = (uint)((data & (1 << (7 - (x & 7)))) != 0 ? 1 : 0);
-                            pixel = Pixel.FromBgra(this.buffer, this.paletteOffset + value * 4);
+                            if (offset >= 0 && offset < this.buffer.Length)
+                            {
+                                byte data = this.buffer[offset];
+                                uint value = (uint)((data & (1 << (7 - (x & 7)))) != 0 ? 1 : 0);
+                                pixel = Pixel.FromBgrx(this.buffer, this.paletteOffset + value * 4);
+                            }
                             break;
                         }
                     case 4:     // 4-bit: left value in high nibble, right value in low nibble. Palette value.
                         {
                             uint offset = (uint)(rowStart + (x / 2));
-                            byte data = this.buffer[offset];
-                            uint value = (uint)(((x & 1) != 0) ? (data & 0x0f) : (data >> 4));
-                            pixel = Pixel.FromBgra(this.buffer, this.paletteOffset + value * 4);
+                            if (offset >= 0 && offset < this.buffer.Length)
+                            {
+                                byte data = this.buffer[offset];
+                                uint value = (uint)(((x & 1) != 0) ? (data & 0x0f) : (data >> 4));
+                                pixel = Pixel.FromBgrx(this.buffer, this.paletteOffset + value * 4);
+                            }
                             break;
                         }
                     case 8:     // 8-bit: Palette value.
                         {
                             uint offset = (uint)(rowStart + x);
-                            uint value = this.buffer[offset];
-                            pixel = Pixel.FromBgra(this.buffer, this.paletteOffset + value * 4);
+                            if (offset >= 0 && offset < this.buffer.Length)
+                            {
+                                uint value = this.buffer[offset];
+                                pixel = Pixel.FromBgrx(this.buffer, this.paletteOffset + value * 4);
+                            }
                             break;
                         }
                     case 24:    // 24-bit: BGR888
                         {
                             uint offset = (uint)(rowStart + (x * 3));
-                            pixel = Pixel.FromBgr(this.buffer, offset);
+                            if (offset >= 0 && offset < this.buffer.Length) pixel = Pixel.FromBgr(this.buffer, offset);
                             break;
                         }
-                    case 32:    // 32-bit BGRA8888
+                    case 32:    // 32-bit BGRX8888
                         {
                             uint offset = (uint)(rowStart + (x * 4));
-                            pixel = Pixel.FromBgra(this.buffer, offset);
+                            if (offset >= 0 && offset < this.buffer.Length) pixel = Pixel.FromBgrx(this.buffer, offset);
                             break;
                         }
                 }
             }
-            if (!pixel.HasValue) return Pixel.BLACK;
+            if (!pixel.HasValue && background != null)
+            {
+                pixel = background.PixelAt(x, y);
+            }
+            if (!pixel.HasValue) return Pixel.TRANSPARENT;
             return this.negative ? pixel.Value.Negate : pixel.Value;
         }
 
@@ -202,38 +229,44 @@ namespace OpenMovement.AxLE.Setup
             degrees = degrees - (((degrees + (degrees < 0 ? -359 : 0)) / 360) * 360);            
             if (degrees >= 45 && degrees < 135) // 90
             {
-                return new Bitmap(this, !this.swapAxes, this.invertX, !this.invertY, this.negative);
+                return new Bitmap(this, !this.swapAxes, this.invertX, !this.invertY, this.negative, this.background);
             }
             else if (degrees >= 135 && degrees < 225) // 180
             {
-                return new Bitmap(this, this.swapAxes, !this.invertX, !this.invertY, this.negative);
+                return new Bitmap(this, this.swapAxes, !this.invertX, !this.invertY, this.negative, this.background);
             }
             else if (degrees >= 225 && degrees < 315) // 270
             {
-                return new Bitmap(this, !this.swapAxes, !this.invertX, this.invertY, this.negative);
+                return new Bitmap(this, !this.swapAxes, !this.invertX, this.invertY, this.negative, this.background);
             }
             else // 0
             {
-                return new Bitmap(this, this.swapAxes, this.invertX, this.invertY, this.negative);
+                return new Bitmap(this, this.swapAxes, this.invertX, this.invertY, this.negative, this.background);
             }
         }
 
         // Returns a bitmap with a horizontally-flipped view of this one
         public Bitmap FlipHorizontal()
         {
-            return new Bitmap(this, this.swapAxes, !this.invertX, this.invertY, this.negative);
+            return new Bitmap(this, this.swapAxes, !this.invertX, this.invertY, this.negative, this.background);
         }
 
         // Returns a bitmap with a vertically-flipped view of this one
         public Bitmap FlipVertical()
         {
-            return new Bitmap(this, this.swapAxes, this.invertX, !this.invertY, this.negative);
+            return new Bitmap(this, this.swapAxes, this.invertX, !this.invertY, this.negative, this.background);
         }
 
         // Returns a bitmap with a negated view of this one
         public Bitmap Negate()
         {
-            return new Bitmap(this, this.swapAxes, this.invertX, this.invertY, !this.negative);
+            return new Bitmap(this, this.swapAxes, this.invertX, this.invertY, !this.negative, this.background);
+        }
+
+        // Returns a bitmap with the specified bitmap as a background
+        public Bitmap WithBackground(Bitmap background)
+        {
+            return new Bitmap(this, this.swapAxes, this.invertX, this.invertY, this.negative, background);
         }
 
         // Returns a bitmap with a cropped view of this one
@@ -242,9 +275,10 @@ namespace OpenMovement.AxLE.Setup
             if (this.swapAxes) { (cropX, cropY) = (cropY, cropX); (cropW, cropH) = (cropH, cropW); }
             int ox = this.offsetX + (this.invertX ? -1 : 1) * cropX;
             int oy = this.offsetY + (this.invertY ? -1 : 1) * cropY;
-            return new Bitmap(this.buffer, (uint)cropW, (uint)cropH,
+            return new Bitmap(this.buffer, (uint)this.width, (uint)this.height,
                 this.bitsPerPixel, this.stride, this.dataOffset, this.paletteOffset,
                 ox, oy,
+                cropW, cropH,
                 this.swapAxes, this.invertX, this.invertY, this.negative);
         }
 
@@ -285,6 +319,7 @@ namespace OpenMovement.AxLE.Setup
                 }
                 sb.Append("\r\n");
             }
+            sb.Append("\r\n");
             return sb.ToString();
         }
     }
